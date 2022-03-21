@@ -597,7 +597,6 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 			addSingletonFactory(beanName, () -> getEarlyBeanReference(beanName, mbd, bean));
 		}
 
-
 		// Initialize the bean instance.
 		// 处理后要返回的 Bean
 		Object exposedObject = bean;
