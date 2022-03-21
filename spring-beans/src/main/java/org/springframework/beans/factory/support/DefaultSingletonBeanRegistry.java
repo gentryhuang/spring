@@ -71,18 +71,41 @@ import org.springframework.util.StringUtils;
 public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements SingletonBeanRegistry {
 
 	/** Cache of singleton objects: bean name to bean instance. */
+	/**
+	 * 一级缓存： 缓存完整的 Bean 实例，即已经实例化和初始化好的实例
+	 */
 	private final Map<String, Object> singletonObjects = new ConcurrentHashMap<>(256);
 
 	/** Cache of singleton factories: bean name to ObjectFactory. */
+	/**
+	 * 三级缓存「用来打破循环的」
+	 *
+	 * 存放的是 ObjectFactory ，传入的是一个匿名的内部类
+	 *
+	 * ObjectFactory.getObject() 最终调用 getEarlyBeanReference 方法，用来延迟暴露半成品「这个 ObjectFactory 处理了 AOP 逻辑」：
+	 * 如果 bean 被代理：返回 bean 的代理对象
+	 * 如果 bean 未被代理：返回原 bean
+	 *
+	 */
 	private final Map<String, ObjectFactory<?>> singletonFactories = new HashMap<>(16);
 
 	/** Cache of early singleton objects: bean name to bean instance. */
+	/**
+	 * 二级缓存
+	 *
+	 * bean 被 AOP 切面代理：
+	 * 否：保存半成品 bean
+	 * 是：保存的是代理的 bean 实例，目标 bean 还是半成品
+	 */
 	private final Map<String, Object> earlySingletonObjects = new HashMap<>(16);
 
 	/** Set of registered singletons, containing the bean names in registration order. */
 	private final Set<String> registeredSingletons = new LinkedHashSet<>(256);
 
 	/** Names of beans that are currently in creation. */
+	/**
+	 * 当前正在创建的 bean 的名称，用来判断是否循环
+	 */
 	private final Set<String> singletonsCurrentlyInCreation =
 			Collections.newSetFromMap(new ConcurrentHashMap<>(16));
 
@@ -151,6 +174,7 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 		Assert.notNull(singletonFactory, "Singleton factory must not be null");
 		synchronized (this.singletonObjects) {
 			if (!this.singletonObjects.containsKey(beanName)) {
+				// singletonFactories 保存的是一个匿名内部类（lamda），调用 ObjectFactory.getObject() 最终会调用 getEarlyBeanReference 方法
 				this.singletonFactories.put(beanName, singletonFactory);
 				this.earlySingletonObjects.remove(beanName);
 				this.registeredSingletons.add(beanName);
@@ -174,20 +198,34 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 	 */
 	@Nullable
 	protected Object getSingleton(String beanName, boolean allowEarlyReference) {
+		// 先从一级缓存中拿
 		Object singletonObject = this.singletonObjects.get(beanName);
+
+		// 一级缓存没有 && 当前 beanName 处于创建的过程
 		if (singletonObject == null && isSingletonCurrentlyInCreation(beanName)) {
 			synchronized (this.singletonObjects) {
+				// 从二级缓存中获取
 				singletonObject = this.earlySingletonObjects.get(beanName);
+
+				// 二级缓存中也没有 && 存在循环场景
 				if (singletonObject == null && allowEarlyReference) {
+					// 从三级缓存中拿，利用 ObjectFactory 获取"正确的实例"
 					ObjectFactory<?> singletonFactory = this.singletonFactories.get(beanName);
 					if (singletonFactory != null) {
+						// 获取正确的实例
 						singletonObject = singletonFactory.getObject();
+
+						// 加入到二级缓存中
 						this.earlySingletonObjects.put(beanName, singletonObject);
+
+						// 移除对应的 ObjectFactory，因为它的使命完成了，已经将正确的实例放入到了二级缓存中了。
+						// 如果还留着可能会造成多个不同的正确实例
 						this.singletonFactories.remove(beanName);
 					}
 				}
 			}
 		}
+
 		return singletonObject;
 	}
 

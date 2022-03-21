@@ -133,6 +133,9 @@ public abstract class AbstractAutoProxyCreator extends ProxyProcessorSupport
 
 	private final Set<String> targetSourcedBeans = Collections.newSetFromMap(new ConcurrentHashMap<>(16));
 
+	/**
+	 * 记录某个原始对象是否进行过 AOP
+	 */
 	private final Map<Object, Object> earlyProxyReferences = new ConcurrentHashMap<>(16);
 
 	private final Map<Object, Class<?>> proxyTypes = new ConcurrentHashMap<>(16);
@@ -236,7 +239,14 @@ public abstract class AbstractAutoProxyCreator extends ProxyProcessorSupport
 	@Override
 	public Object getEarlyBeanReference(Object bean, String beanName) {
 		Object cacheKey = getCacheKey(bean.getClass(), beanName);
+
+		// 记录某个原始对象是否进行过 AOP
 		this.earlyProxyReferences.put(cacheKey, bean);
+
+		// 调用 wrapIfNecessary 方法，如果有必要进行 AOP
+
+		// todo 后续流程中 org.springframework.aop.framework.autoproxy.AbstractAutoProxyCreator.postProcessAfterInitialization
+		// 会判断是否需要进行 AOP
 		return wrapIfNecessary(bean, beanName, cacheKey);
 	}
 
@@ -295,6 +305,8 @@ public abstract class AbstractAutoProxyCreator extends ProxyProcessorSupport
 	public Object postProcessAfterInitialization(@Nullable Object bean, String beanName) {
 		if (bean != null) {
 			Object cacheKey = getCacheKey(bean.getClass(), beanName);
+
+			// 判断当前 beanName 是否在 earlyProxyReferences 中，如果在则表示已经提前进行过 AOP ，无需再次进行
 			if (this.earlyProxyReferences.remove(cacheKey) != bean) {
 				return wrapIfNecessary(bean, beanName, cacheKey);
 			}
